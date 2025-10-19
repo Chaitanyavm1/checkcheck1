@@ -1460,6 +1460,108 @@ else:
     
     st.markdown("---")
     
+    # Deep Analysis Visualizations
+    st.markdown("## 🔬 Deep Performance Analysis")
+    
+    analysis_tab1, analysis_tab2, analysis_tab3 = st.tabs(["🕸️ Skill Profiles", "📊 Move Quality Flow", "🎯 Phase Breakdown"])
+    
+    with analysis_tab1:
+        st.markdown("### Spider Charts - Complete Skill Assessment")
+        col_spider1, col_spider2 = st.columns(2)
+        
+        with col_spider1:
+            white_spider = create_spider_chart(
+                st.session_state.white_phase_ratings, 
+                "White", 
+                "rgba(220, 220, 255, 1)"
+            )
+            st.plotly_chart(white_spider, use_container_width=True)
+        
+        with col_spider2:
+            black_spider = create_spider_chart(
+                st.session_state.black_phase_ratings, 
+                "Black", 
+                "rgba(100, 100, 120, 1)"
+            )
+            st.plotly_chart(black_spider, use_container_width=True)
+        
+        st.info("📊 **Spider Chart Metrics:**\n"
+                "- **Opening/Middlegame/Endgame**: Accuracy in each phase\n"
+                "- **Tactics**: Frequency of brilliant/great moves\n"
+                "- **Accuracy**: Overall precision\n"
+                "- **Calculation**: Consistency (inverse of errors)")
+    
+    with analysis_tab2:
+        st.markdown("### Candlestick View - Position Volatility")
+        
+        col_candle1, col_candle2 = st.columns(2)
+        
+        with col_candle1:
+            white_candles = create_move_quality_candles(analysis, 'White')
+            if white_candles:
+                st.plotly_chart(white_candles, use_container_width=True)
+            else:
+                st.info("No moves to display")
+        
+        with col_candle2:
+            black_candles = create_move_quality_candles(analysis, 'Black')
+            if black_candles:
+                st.plotly_chart(black_candles, use_container_width=True)
+            else:
+                st.info("No moves to display")
+        
+        st.info("📈 **Candlestick Interpretation:**\n"
+                "- **Green candles**: Position improved during segment\n"
+                "- **Red candles**: Position deteriorated during segment\n"
+                "- **Long wicks**: High volatility/complexity\n"
+                "- Color intensity shows error count in segment")
+    
+    with analysis_tab3:
+        st.markdown("### 9-Level Classification by Phase")
+        
+        phase_detail_tab1, phase_detail_tab2 = st.tabs(["⚪ White", "⚫ Black"])
+        
+        with phase_detail_tab1:
+            white_phases = st.session_state.white_phase_ratings
+            
+            col_pd1, col_pd2, col_pd3 = st.columnsdef analyze_position(board, depth=18):
+    """Analyze position with Stockfish - Always returns evaluation from White's perspective"""
+    if st.session_state.engine is None:
+        return {'evaluation': 0, 'best_move': None, 'mate_in': None, 'top_moves': []}
+    
+    try:
+        info = st.session_state.engine.analyse(board, chess.engine.Limit(depth=depth), multipv=3)
+        
+        main_info = info[0] if isinstance(info, list) else info
+        score = main_info['score'].white()  # Always from White's perspective
+        evaluation = score.score(mate_score=10000) / 100.0 if score.score() is not None else 0
+        best_move = main_info.get('pv', [None])[0]
+        mate_in = score.mate() if score.is_mate() else None
+        
+        top_moves = []
+        if isinstance(info, list):
+            for line in info[:3]:
+                move = line.get('pv', [None])[0]
+                if move:
+                    move_score = line['score'].white()  # Always from White's perspective
+                    move_eval = move_score.score(mate_score=10000) / 100.0 if move_score.score() is not None else 0
+                    top_moves.append({
+                        'move': move.uci(),
+                        'san': board.san(move),
+                        'eval': move_eval,
+                        'pv': [m.uci() for m in line.get('pv', [])[:5]]
+                    })
+        
+        return {
+            'evaluation': evaluation,
+            'best_move': best_move.uci() if best_move else None,
+            'best_move_san': board.san(best_move) if best_move else None,
+            'mate_in': mate_in,
+            'top_moves': top_moves
+        }
+    except:
+        return {'evaluation': 0, 'best_move': None, 'mate_in': None, 'top_moves': []}
+    
     # Interactive Board Section
     st.markdown("## 🎮 Interactive Analysis")
     
