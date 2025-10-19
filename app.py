@@ -374,7 +374,7 @@ def render_board_svg(board, size=400, highlighted_squares=None, arrows=None, las
         return "<p>Error rendering board</p>"
 
 def analyze_position(board, depth=18):
-    """Analyze position with Stockfish"""
+    """Analyze position with Stockfish - Always returns evaluation from White's perspective"""
     if st.session_state.engine is None:
         return {'evaluation': 0, 'best_move': None, 'mate_in': None, 'top_moves': []}
     
@@ -382,7 +382,7 @@ def analyze_position(board, depth=18):
         info = st.session_state.engine.analyse(board, chess.engine.Limit(depth=depth), multipv=3)
         
         main_info = info[0] if isinstance(info, list) else info
-        score = main_info['score'].relative
+        score = main_info['score'].white()  # Always from White's perspective
         evaluation = score.score(mate_score=10000) / 100.0 if score.score() is not None else 0
         best_move = main_info.get('pv', [None])[0]
         mate_in = score.mate() if score.is_mate() else None
@@ -392,7 +392,7 @@ def analyze_position(board, depth=18):
             for line in info[:3]:
                 move = line.get('pv', [None])[0]
                 if move:
-                    move_score = line['score'].relative
+                    move_score = line['score'].white()  # Always from White's perspective
                     move_eval = move_score.score(mate_score=10000) / 100.0 if move_score.score() is not None else 0
                     top_moves.append({
                         'move': move.uci(),
