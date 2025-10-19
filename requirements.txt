@@ -1,0 +1,8 @@
+streamlit==1.29.0
+chess==1.10.0
+python-chess==1.999
+stockfish==3.28.0
+plotly==5.18.0
+pandas==2.1.4
+numpy==1.26.2
+Pillow==10.1.0
