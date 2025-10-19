@@ -1763,12 +1763,22 @@ elif page == "📊 Analyze Game":
         if 'performance_metrics' in st.session_state:
             metrics = st.session_state.performance_metrics
             
+            # Safely get move_stats with defaults
+            move_stats = metrics.get('move_stats', {
+                'brilliant': 0,
+                'best': 0,
+                'good': 0,
+                'inaccuracy': 0,
+                'mistake': 0,
+                'blunder': 0
+            })
+            
             col1, col2, col3, col4, col5 = st.columns(5)
             
             with col1:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-value">{metrics['accuracy']:.1f}%</div>
+                    <div class="metric-value">{metrics.get('accuracy', 0):.1f}%</div>
                     <div class="metric-label">Overall Accuracy</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1776,7 +1786,7 @@ elif page == "📊 Analyze Game":
             with col2:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-value">{metrics['move_stats']['brilliant']}</div>
+                    <div class="metric-value">{move_stats.get('brilliant', 0)}</div>
                     <div class="metric-label">Brilliant Moves</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1784,7 +1794,7 @@ elif page == "📊 Analyze Game":
             with col3:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-value">{metrics['move_stats']['best']}</div>
+                    <div class="metric-value">{move_stats.get('best', 0)}</div>
                     <div class="metric-label">Best Moves</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1792,7 +1802,7 @@ elif page == "📊 Analyze Game":
             with col4:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-value">{metrics['move_stats']['mistake']}</div>
+                    <div class="metric-value">{move_stats.get('mistake', 0)}</div>
                     <div class="metric-label">Mistakes</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1800,7 +1810,7 @@ elif page == "📊 Analyze Game":
             with col5:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-value">{metrics['move_stats']['blunder']}</div>
+                    <div class="metric-value">{move_stats.get('blunder', 0)}</div>
                     <div class="metric-label">Blunders</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -2338,16 +2348,23 @@ elif page == "👤 Profile & Stats":
         # Move Quality Distribution
         st.markdown("## 📊 Move Quality Distribution")
         
-        move_stats = metrics['move_stats']
+        move_stats = metrics.get('move_stats', {
+            'brilliant': 0,
+            'best': 0,
+            'good': 0,
+            'inaccuracy': 0,
+            'mistake': 0,
+            'blunder': 0
+        })
         
         labels = ['Brilliant', 'Best', 'Good', 'Inaccuracy', 'Mistake', 'Blunder']
         values = [
-            move_stats['brilliant'],
-            move_stats['best'],
-            move_stats['good'],
-            move_stats['inaccuracy'],
-            move_stats['mistake'],
-            move_stats['blunder']
+            move_stats.get('brilliant', 0),
+            move_stats.get('best', 0),
+            move_stats.get('good', 0),
+            move_stats.get('inaccuracy', 0),
+            move_stats.get('mistake', 0),
+            move_stats.get('blunder', 0)
         ]
         colors = ['#9333ea', '#10b981', '#3b82f6', '#f59e0b', '#f97316', '#ef4444']
         
