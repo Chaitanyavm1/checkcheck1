@@ -1568,7 +1568,8 @@ else:
                 with st.expander("🔍 Alternative Lines"):
                     for idx, alt in enumerate(current_move['top_moves'][:3], 1):
                         is_played = (alt['move'] == current_move['move'])
-                        st.markdown(f"**{idx}. {alt['san']}** ({'✓ Played' if is_played else f'{alt[\"eval\"]:+.2f}'})")
+                        eval_str = '✓ Played' if is_played else f"{alt['eval']:+.2f}"
+                        st.markdown(f"**{idx}. {alt['san']}** ({eval_str})")
                         st.caption(f"Continuation: {' '.join(alt['pv'][:4])}")
         else:
             st.markdown("""
