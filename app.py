@@ -373,6 +373,43 @@ def render_board_svg(board, size=400, highlighted_squares=None, arrows=None, las
     except:
         return "<p>Error rendering board</p>"
 
+def analyze_position(board, depth=18):
+    """Analyze position with Stockfish - Always returns evaluation from White's perspective"""
+    if st.session_state.engine is None:
+        return {'evaluation': 0, 'best_move': None, 'mate_in': None, 'top_moves': []}
+    
+    try:
+        info = st.session_state.engine.analyse(board, chess.engine.Limit(depth=depth), multipv=3)
+        
+        main_info = info[0] if isinstance(info, list) else info
+        score = main_info['score'].white()  # Always from White's perspective
+        evaluation = score.score(mate_score=10000) / 100.0 if score.score() is not None else 0
+        best_move = main_info.get('pv', [None])[0]
+        mate_in = score.mate() if score.is_mate() else None
+        
+        top_moves = []
+        if isinstance(info, list):
+            for line in info[:3]:
+                move = line.get('pv', [None])[0]
+                if move:
+                    move_score = line['score'].white()  # Always from White's perspective
+                    move_eval = move_score.score(mate_score=10000) / 100.0 if move_score.score() is not None else 0
+                    top_moves.append({
+                        'move': move.uci(),
+                        'san': board.san(move),
+                        'eval': move_eval,
+                        'pv': [m.uci() for m in line.get('pv', [])[:5]]
+                    })
+        
+        return {
+            'evaluation': evaluation,
+            'best_move': best_move.uci() if best_move else None,
+            'best_move_san': board.san(best_move) if best_move else None,
+            'mate_in': mate_in,
+            'top_moves': top_moves
+        }
+    except:
+        return {'evaluation': 0, 'best_move': None, 'mate_in': None, 'top_moves': []}
 
 def detect_opening(move_sequence):
     """Detect opening from move sequence"""
@@ -483,21 +520,7 @@ def is_discovered_attack(board, move):
 
 def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, is_book_move=False, best_move_eval=None):
     """
-    Realistic 9-level move classification based on Chess.com/Lichess standards:
-    
-    Centipawn Loss (CPL) = How much worse the position became after the move
-    - CPL is ALWAYS POSITIVE when position worsens
-    - Lower CPL = Better move
-    
-    Thresholds (based on real chess platforms):
-    - Best: 0-10 CP loss (engine's top choice)
-    - Excellent: 10-25 CP loss
-    - Good: 25-50 CP loss
-    - Inaccuracy: 50-100 CP loss
-    - Mistake: 100-200 CP loss
-    - Blunder: 200+ CP loss
-    - Brilliant: Special case - NOT best move but gains unexpected advantage
-    - Great: Better than engine's 2nd best by 20+ CP
+    Realistic 9-level move classification based on Chess.com/Lichess standards
     """
     
     # Normalize evaluation for player color
@@ -505,15 +528,14 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
         eval_before = -eval_before
         eval_after = -eval_after
     
-    # Calculate centipawn loss - POSITIVE means position got worse
-    # eval_before = 2.0, eval_after = 1.8 → loss = 20 centipawns (position worsened)
+    # Calculate centipawn loss
     centipawn_loss = (eval_before - eval_after) * 100
     
-    # Ensure non-negative (handle floating point errors)
+    # Ensure non-negative
     if abs(centipawn_loss) < 1:
         centipawn_loss = 0
     
-    # Theory/Book move (only in opening phase)
+    # Theory/Book move
     if is_book_move:
         return {
             'type': 'theory',
@@ -525,19 +547,11 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
             'teaching': 'Following book moves is good in the opening.'
         }
     
-    # BRILLIANT - Very special case
-    # Requirements:
-    # 1. NOT the engine's best move
-    # 2. Still only loses 0-15 CP (so it's objectively strong)
-    # 3. Involves a sacrifice or very non-obvious play (we approximate this)
-    # 4. The position must be complex (eval swings matter)
-    
-    # For now, we mark brilliant conservatively:
-    # Only if it's not best move, loses less than 15 CP, AND position improved significantly
+    # BRILLIANT
     if (not is_best_move and 
         centipawn_loss <= 15 and 
         centipawn_loss >= 0 and
-        eval_after > eval_before + 0.2):  # Position actually improved by 20+ CP
+        eval_after > eval_before + 0.2):
         
         return {
             'type': 'brilliant',
@@ -549,8 +563,7 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
             'teaching': 'This is a brilliant find - study this position!'
         }
     
-    # GREAT - Strong alternative move
-    # Not best, but only loses 5-15 CP and is clearly better than other alternatives
+    # GREAT
     if (not is_best_move and 
         0 <= centipawn_loss <= 15):
         
@@ -564,7 +577,7 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
             'teaching': 'Almost as good as the engine\'s choice!'
         }
     
-    # BEST - Engine's top choice or nearly perfect
+    # BEST
     if is_best_move or centipawn_loss <= 10:
         return {
             'type': 'best',
@@ -576,7 +589,7 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
             'teaching': 'Perfect play! This is what the engine recommends.'
         }
     
-    # EXCELLENT - Very good move (10-25 CP loss)
+    # EXCELLENT
     if centipawn_loss <= 25:
         return {
             'type': 'excellent',
@@ -588,7 +601,7 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
             'teaching': f'Only {int(centipawn_loss)} CP from perfect - great accuracy!'
         }
     
-    # GOOD - Acceptable move (25-50 CP loss)
+    # GOOD
     if centipawn_loss <= 50:
         return {
             'type': 'good',
@@ -600,7 +613,7 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
             'teaching': f'Solid play. Lost {int(centipawn_loss)} CP - acceptable in practical play.'
         }
     
-    # INACCURACY - Minor error (50-100 CP loss)
+    # INACCURACY
     if centipawn_loss <= 100:
         return {
             'type': 'inaccuracy',
@@ -612,7 +625,7 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
             'teaching': f'Lost {int(centipawn_loss)} CP. Look for more active moves or better piece placement.'
         }
     
-    # MISTAKE - Significant error (100-200 CP loss)
+    # MISTAKE
     if centipawn_loss <= 200:
         return {
             'type': 'mistake',
@@ -624,7 +637,7 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
             'teaching': f'This loses {int(centipawn_loss)} CP! Check: 1) Are pieces safe? 2) What are opponent\'s threats? 3) Better squares?'
         }
     
-    # BLUNDER - Critical error (200+ CP loss)
+    # BLUNDER
     return {
         'type': 'blunder',
         'symbol': '??',
@@ -646,7 +659,7 @@ def generate_tutor_explanation(move_data, position_board):
         'brilliant': f"""
         🎓 **BRILLIANT PLAY!**
         
-        You discovered {san}, a brilliant move worth {abs(cp_loss)} centipawns!
+        You discovered {san}, a brilliant move!
         
         **Why it's brilliant:**
         - Shows exceptional calculation depth
@@ -660,14 +673,14 @@ def generate_tutor_explanation(move_data, position_board):
         'great': f"""
         🎓 **GREAT DISCOVERY!**
         
-        {san} is a great move, improving your position by {abs(cp_loss)} centipawns!
+        {san} is a great move, improving your position!
         
         **Why it's great:**
         - Significantly better than the obvious alternatives
         - Shows strong understanding of position
         - Finds the most active continuation
         
-        **Keep It Up:** You're thinking beyond surface-level moves. This depth of analysis leads to mastery!
+        **Keep It Up:** You're thinking beyond surface-level moves!
         """,
         
         'best': f"""
@@ -680,7 +693,7 @@ def generate_tutor_explanation(move_data, position_board):
         - Maintains or increases your advantage
         - No better alternative exists in this position
         
-        **Elite Performance:** Consistently finding best moves separates masters from beginners. You're on the right track!
+        **Elite Performance:** Consistently finding best moves separates masters from beginners!
         """,
         
         'excellent': f"""
@@ -720,7 +733,7 @@ def generate_tutor_explanation(move_data, position_board):
         - Castle for king safety
         - Don't move the same piece twice
         
-        **Study Tip:** Learn the IDEAS behind opening moves, not just memorization. Understand why masters play these moves!
+        **Study Tip:** Learn the IDEAS behind opening moves, not just memorization!
         """,
         
         'inaccuracy': f"""
@@ -735,7 +748,7 @@ def generate_tutor_explanation(move_data, position_board):
         - Check if you can gain tempo (move with threat)
         - Consider controlling key central squares
         
-        **Practice Drill:** Before moving, ask: "Can my pieces be MORE active?" Take 10 extra seconds to look deeper!
+        **Practice Drill:** Before moving, ask: "Can my pieces be MORE active?"
         """,
         
         'mistake': f"""
@@ -752,7 +765,7 @@ def generate_tutor_explanation(move_data, position_board):
         
         **CRITICAL CHECKLIST (Use Every Move):**
         1. ✓ Are ALL my pieces safe?
-        2. ✓ Am I leaving weaknesses (holes, backward pawns)?
+        2. ✓ Am I leaving weaknesses?
         3. ✓ What is my opponent's BEST response?
         4. ✓ Can I improve piece activity first?
         
@@ -782,23 +795,17 @@ def generate_tutor_explanation(move_data, position_board):
         
         **Training Plan:**
         - Slow down! Take 2x as long on each move
-        - Do 20 tactical puzzles daily on Chess.com/Lichess
-        - Practice "touch-move" discipline: Think BEFORE touching pieces
+        - Do 20 tactical puzzles daily
+        - Practice "touch-move" discipline
         
-        **Remember:** 95% of blunders are preventable with careful checking. You can eliminate these!
+        **Remember:** 95% of blunders are preventable with careful checking!
         """,
     }
     
     return explanations.get(move_type, move_data['classification']['explanation'])
 
 def estimate_elo(accuracy, acpl, phase_performance, move_quality_distribution):
-    """
-    Enhanced ELO estimation based on multiple factors:
-    - Overall accuracy
-    - Average centipawn loss (ACPL)
-    - Phase performance (opening, middlegame, endgame)
-    - Move quality distribution
-    """
+    """Enhanced ELO estimation"""
     base_elo = 600
     
     # Accuracy contribution (0-800 points)
@@ -817,7 +824,7 @@ def estimate_elo(accuracy, acpl, phase_performance, move_quality_distribution):
     else:
         accuracy_elo = (accuracy / 70) * 300
     
-    # ACPL contribution (0-500 points, lower ACPL = higher rating)
+    # ACPL contribution (0-500 points)
     if acpl < 10:
         acpl_elo = 500
     elif acpl < 20:
@@ -852,7 +859,6 @@ def estimate_elo(accuracy, acpl, phase_performance, move_quality_distribution):
     
     estimated = base_elo + accuracy_elo + acpl_elo + phase_elo + quality_bonus - blunder_penalty - mistake_penalty
     
-    # Clamp between 400-3200
     return max(400, min(3200, int(estimated)))
 
 def calculate_phase_ratings(analysis):
@@ -953,7 +959,7 @@ def analyze_game(pgn_string, progress_callback=None):
         previous_board = board.copy()
         move_sequence.append(move.uci())
         
-        # Detect if it's a theory move (first 10 moves)
+        # Detect if it's a theory move
         opening_info = detect_opening(move_sequence)
         is_theory = (idx < 10 and opening_info['name'] != 'Unknown Opening')
         
@@ -1392,28 +1398,6 @@ else:
         col_h.metric("❌ Mistake", moves.get('mistake', 0))
         col_i.metric("💥 Blunder", moves.get('blunder', 0))
     
-    with col2:
-        st.markdown("### ⚫ Black's Moves")
-        moves = st.session_state.black_stats['move_types']
-        
-        # Top tier
-        col_a, col_b, col_c = st.columns(3)
-        col_a.metric("✨ Brilliant", moves.get('brilliant', 0))
-        col_b.metric("🌟 Great", moves.get('great', 0))
-        col_c.metric("✓ Best", moves.get('best', 0))
-        
-        # Mid tier
-        col_d, col_e, col_f = st.columns(3)
-        col_d.metric("⭐ Excellent", moves.get('excellent', 0))
-        col_e.metric("✔ Good", moves.get('good', 0))
-        col_f.metric("📚 Theory", moves.get('theory', 0))
-        
-        # Low tier
-        col_g, col_h, col_i = st.columns(3)
-        col_g.metric("⚠ Inaccuracy", moves.get('inaccuracy', 0))
-        col_h.metric("❌ Mistake", moves.get('mistake', 0))
-        col_i.metric("💥 Blunder", moves.get('blunder', 0))
-    
     st.markdown("---")
     
     # Evaluation Chart
@@ -1422,108 +1406,6 @@ else:
     st.plotly_chart(eval_chart, use_container_width=True)
     
     st.markdown("---")
-    
-    # Deep Analysis Visualizations
-    st.markdown("## 🔬 Deep Performance Analysis")
-    
-    analysis_tab1, analysis_tab2, analysis_tab3 = st.tabs(["🕸️ Skill Profiles", "📊 Move Quality Flow", "🎯 Phase Breakdown"])
-    
-    with analysis_tab1:
-        st.markdown("### Spider Charts - Complete Skill Assessment")
-        col_spider1, col_spider2 = st.columns(2)
-        
-        with col_spider1:
-            white_spider = create_spider_chart(
-                st.session_state.white_phase_ratings, 
-                "White", 
-                "rgba(220, 220, 255, 1)"
-            )
-            st.plotly_chart(white_spider, use_container_width=True)
-        
-        with col_spider2:
-            black_spider = create_spider_chart(
-                st.session_state.black_phase_ratings, 
-                "Black", 
-                "rgba(100, 100, 120, 1)"
-            )
-            st.plotly_chart(black_spider, use_container_width=True)
-        
-        st.info("📊 **Spider Chart Metrics:**\n"
-                "- **Opening/Middlegame/Endgame**: Accuracy in each phase\n"
-                "- **Tactics**: Frequency of brilliant/great moves\n"
-                "- **Accuracy**: Overall precision\n"
-                "- **Calculation**: Consistency (inverse of errors)")
-    
-    with analysis_tab2:
-        st.markdown("### Candlestick View - Position Volatility")
-        
-        col_candle1, col_candle2 = st.columns(2)
-        
-        with col_candle1:
-            white_candles = create_move_quality_candles(analysis, 'White')
-            if white_candles:
-                st.plotly_chart(white_candles, use_container_width=True)
-            else:
-                st.info("No moves to display")
-        
-        with col_candle2:
-            black_candles = create_move_quality_candles(analysis, 'Black')
-            if black_candles:
-                st.plotly_chart(black_candles, use_container_width=True)
-            else:
-                st.info("No moves to display")
-        
-        st.info("📈 **Candlestick Interpretation:**\n"
-                "- **Green candles**: Position improved during segment\n"
-                "- **Red candles**: Position deteriorated during segment\n"
-                "- **Long wicks**: High volatility/complexity\n"
-                "- Color intensity shows error count in segment")
-    
-    with analysis_tab3:
-        st.markdown("### 9-Level Classification by Phase")
-        
-        phase_detail_tab1, phase_detail_tab2 = st.tabs(["⚪ White", "⚫ Black"])
-        
-        with phase_detail_tab1:
-            white_phases = st.session_state.white_phase_ratings
-            
-            col_pd1, col_pd2, col_pd3 = st.columns(3)
-    """Analyze position with Stockfish - Always returns evaluation from White's perspective"""
-    if st.session_state.engine is None:
-        return {'evaluation': 0, 'best_move': None, 'mate_in': None, 'top_moves': []}
-    
-    try:
-        info = st.session_state.engine.analyse(board, chess.engine.Limit(depth=depth), multipv=3)
-        
-        main_info = info[0] if isinstance(info, list) else info
-        score = main_info['score'].white()  # Always from White's perspective
-        evaluation = score.score(mate_score=10000) / 100.0 if score.score() is not None else 0
-        best_move = main_info.get('pv', [None])[0]
-        mate_in = score.mate() if score.is_mate() else None
-        
-        top_moves = []
-        if isinstance(info, list):
-            for line in info[:3]:
-                move = line.get('pv', [None])[0]
-                if move:
-                    move_score = line['score'].white()  # Always from White's perspective
-                    move_eval = move_score.score(mate_score=10000) / 100.0 if move_score.score() is not None else 0
-                    top_moves.append({
-                        'move': move.uci(),
-                        'san': board.san(move),
-                        'eval': move_eval,
-                        'pv': [m.uci() for m in line.get('pv', [])[:5]]
-                    })
-        
-        return {
-            'evaluation': evaluation,
-            'best_move': best_move.uci() if best_move else None,
-            'best_move_san': board.san(best_move) if best_move else None,
-            'mate_in': mate_in,
-            'top_moves': top_moves
-        }
-    except:
-        return {'evaluation': 0, 'best_move': None, 'mate_in': None, 'top_moves': []}
     
     # Interactive Board Section
     st.markdown("## 🎮 Interactive Analysis")
@@ -1837,3 +1719,25 @@ st.markdown("""
     </p>
 </div>
 """, unsafe_allow_html=True)
+        col_b.metric("🌟 Great", moves.get('great', 0))
+        col_c.metric("✓ Best", moves.get('best', 0))
+        
+        # Mid tier
+        col_d, col_e, col_f = st.columns(3)
+        col_d.metric("⭐ Excellent", moves.get('excellent', 0))
+        col_e.metric("✔ Good", moves.get('good', 0))
+        col_f.metric("📚 Theory", moves.get('theory', 0))
+        
+        # Low tier
+        col_g, col_h, col_i = st.columns(3)
+        col_g.metric("⚠ Inaccuracy", moves.get('inaccuracy', 0))
+        col_h.metric("❌ Mistake", moves.get('mistake', 0))
+        col_i.metric("💥 Blunder", moves.get('blunder', 0))
+    
+    with col2:
+        st.markdown("### ⚫ Black's Moves")
+        moves = st.session_state.black_stats['move_types']
+        
+        # Top tier
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("✨ Brilliant", moves.get('brilliant', 0))
