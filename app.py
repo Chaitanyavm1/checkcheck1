@@ -3,7 +3,8 @@ Chess Learning Coach - Streamlit Application
 A web-based chess analysis and coaching platform using Streamlit
 
 Requirements:
-pip install streamlit chess python-chess stockfish plotly pandas
+pip install streamlit python-chess plotly pandas numpy
+System: Stockfish chess engine (installed via packages.txt)
 """
 
 import streamlit as st
