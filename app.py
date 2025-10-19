@@ -1524,7 +1524,7 @@ else:
         with phase_detail_tab1:
             white_phases = st.session_state.white_phase_ratings
             
-            col_pd1, col_pd2, col_pd3 = st.columnsdef analyze_position(board, depth=18):
+            col_pd1, col_pd2, col_pd3 = st.columns(3)
     """Analyze position with Stockfish - Always returns evaluation from White's perspective"""
     if st.session_state.engine is None:
         return {'evaluation': 0, 'best_move': None, 'mate_in': None, 'top_moves': []}
