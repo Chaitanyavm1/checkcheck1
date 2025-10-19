@@ -29,6 +29,28 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Initialize session state FIRST (before any other code that uses it)
+if 'board' not in st.session_state:
+    st.session_state.board = chess.Board()
+if 'game_analysis' not in st.session_state:
+    st.session_state.game_analysis = []
+if 'opening_analysis' not in st.session_state:
+    st.session_state.opening_analysis = {}
+if 'tactical_motifs' not in st.session_state:
+    st.session_state.tactical_motifs = []
+if 'lessons_learned' not in st.session_state:
+    st.session_state.lessons_learned = []
+if 'engine' not in st.session_state:
+    st.session_state.engine = None
+if 'user_profile' not in st.session_state:
+    st.session_state.user_profile = {
+        'username': 'Player',
+        'rating': 1200,
+        'games_analyzed': 0,
+        'total_tactics_found': 0,
+        'opening_repertoire': []
+    }
+
 # Enhanced CSS
 st.markdown("""
 <style>
