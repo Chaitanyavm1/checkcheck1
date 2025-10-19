@@ -1,5 +1,5 @@
 """
-Chess Coach Pro - Complete Edition
+Chess Coach Pro - Complete Edition (CORRECTED)
 Ultimate chess analysis combining 9-level classification, tactics, and AI coaching
 
 Requirements:
@@ -54,6 +54,10 @@ if 'phase_ratings' not in st.session_state:
     st.session_state.phase_ratings = {}
 if 'estimated_elo' not in st.session_state:
     st.session_state.estimated_elo = {}
+if 'white_phase_ratings' not in st.session_state:
+    st.session_state.white_phase_ratings = {}
+if 'black_phase_ratings' not in st.session_state:
+    st.session_state.black_phase_ratings = {}
 
 # Enhanced CSS
 st.markdown("""
@@ -323,6 +327,7 @@ TACTICAL_PATTERNS = {
     'capture': {'name': 'Capture', 'icon': '✖️', 'description': 'Capturing opponent piece'},
     'check': {'name': 'Check', 'icon': '♔', 'description': 'Attacking enemy king'},
     'checkmate': {'name': 'Checkmate', 'icon': '♚', 'description': 'King in check with no escape'},
+    'winning_capture': {'name': 'Winning Capture', 'icon': '🎁', 'description': 'Capturing more valuable piece'},
 }
 
 # Stockfish Engine Setup
@@ -382,7 +387,7 @@ def analyze_position(board, depth=18):
         info = st.session_state.engine.analyse(board, chess.engine.Limit(depth=depth), multipv=3)
         
         main_info = info[0] if isinstance(info, list) else info
-        score = main_info['score'].white()  # Always from White's perspective
+        score = main_info['score'].white()
         evaluation = score.score(mate_score=10000) / 100.0 if score.score() is not None else 0
         best_move = main_info.get('pv', [None])[0]
         mate_in = score.mate() if score.is_mate() else None
@@ -392,7 +397,7 @@ def analyze_position(board, depth=18):
             for line in info[:3]:
                 move = line.get('pv', [None])[0]
                 if move:
-                    move_score = line['score'].white()  # Always from White's perspective
+                    move_score = line['score'].white()
                     move_eval = move_score.score(mate_score=10000) / 100.0 if move_score.score() is not None else 0
                     top_moves.append({
                         'move': move.uci(),
@@ -460,7 +465,6 @@ def detect_tactical_motifs(board, move, previous_board):
         if piece and piece.color != from_piece.color:
             attackers = board.attackers(from_piece.color, square)
             if move.to_square in attackers:
-                # Check if there's a more valuable piece behind
                 for behind_sq in chess.SQUARES:
                     behind_piece = board.piece_at(behind_sq)
                     if (behind_piece and behind_piece.color == piece.color and
@@ -519,9 +523,7 @@ def is_discovered_attack(board, move):
     return False
 
 def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, is_book_move=False, best_move_eval=None):
-    """
-    Realistic 9-level move classification based on Chess.com/Lichess standards
-    """
+    """Realistic 9-level move classification"""
     
     # Normalize evaluation for player color
     if player_color == chess.BLACK:
@@ -531,7 +533,6 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
     # Calculate centipawn loss
     centipawn_loss = (eval_before - eval_after) * 100
     
-    # Ensure non-negative
     if abs(centipawn_loss) < 1:
         centipawn_loss = 0
     
@@ -564,9 +565,7 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
         }
     
     # GREAT
-    if (not is_best_move and 
-        0 <= centipawn_loss <= 15):
-        
+    if (not is_best_move and 0 <= centipawn_loss <= 15):
         return {
             'type': 'great',
             'symbol': '⁂',
@@ -673,7 +672,7 @@ def generate_tutor_explanation(move_data, position_board):
         'great': f"""
         🎓 **GREAT DISCOVERY!**
         
-        {san} is a great move, improving your position!
+        {san} is a great move!
         
         **Why it's great:**
         - Significantly better than the obvious alternatives
@@ -691,7 +690,7 @@ def generate_tutor_explanation(move_data, position_board):
         **Why it's best:**
         - Optimal piece placement or pawn structure
         - Maintains or increases your advantage
-        - No better alternative exists in this position
+        - No better alternative exists
         
         **Elite Performance:** Consistently finding best moves separates masters from beginners!
         """,
@@ -763,13 +762,13 @@ def generate_tutor_explanation(move_data, position_board):
         - Weakened pawn structure or king safety
         - Piece became passive or misplaced
         
-        **CRITICAL CHECKLIST (Use Every Move):**
+        **CRITICAL CHECKLIST:**
         1. ✓ Are ALL my pieces safe?
         2. ✓ Am I leaving weaknesses?
         3. ✓ What is my opponent's BEST response?
         4. ✓ Can I improve piece activity first?
         
-        **Recovery:** Everyone makes mistakes. The key is learning from them!
+        **Recovery:** Everyone makes mistakes. Learn from them!
         """,
         
         'blunder': f"""
@@ -785,8 +784,7 @@ def generate_tutor_explanation(move_data, position_board):
         - Checkmate threat
         - Losing material through forced sequence
         
-        **MANDATORY BLUNDER-CHECK ROUTINE:**
-        Before EVERY move, verify:
+        **MANDATORY BLUNDER-CHECK:**
         1. ✓ Does opponent have ANY checks?
         2. ✓ Does opponent have ANY captures?
         3. ✓ Does opponent have ANY attacks on my pieces?
@@ -824,7 +822,7 @@ def estimate_elo(accuracy, acpl, phase_performance, move_quality_distribution):
     else:
         accuracy_elo = (accuracy / 70) * 300
     
-    # ACPL contribution (0-500 points)
+    # ACPL contribution
     if acpl < 10:
         acpl_elo = 500
     elif acpl < 20:
@@ -840,20 +838,20 @@ def estimate_elo(accuracy, acpl, phase_performance, move_quality_distribution):
     else:
         acpl_elo = max(0, 250 - (acpl - 100) * 2)
     
-    # Phase performance (0-400 points)
+    # Phase performance
     phase_elo = (
         phase_performance.get('opening', 0) * 1.2 +
         phase_performance.get('middlegame', 0) * 1.5 +
         phase_performance.get('endgame', 0) * 1.3
     ) / 4
     
-    # Move quality bonus (0-300 points)
+    # Move quality bonus
     brilliant_bonus = move_quality_distribution.get('brilliant', 0) * 50
     great_bonus = move_quality_distribution.get('great', 0) * 30
     best_bonus = move_quality_distribution.get('best', 0) * 2
     quality_bonus = min(300, brilliant_bonus + great_bonus + best_bonus)
     
-    # Blunder penalty
+    # Penalties
     blunder_penalty = move_quality_distribution.get('blunder', 0) * 100
     mistake_penalty = move_quality_distribution.get('mistake', 0) * 30
     
@@ -933,6 +931,108 @@ def calculate_player_stats(analysis, player):
         'acpl': acpl
     }
 
+def create_spider_chart(phase_ratings, player_name, color):
+    """Create spider/radar chart for player performance"""
+    categories = ['Opening', 'Middlegame', 'Endgame', 'Tactics', 'Accuracy', 'Calculation']
+    
+    values = [
+        phase_ratings.get('opening', {}).get('accuracy', 0),
+        phase_ratings.get('middlegame', {}).get('accuracy', 0),
+        phase_ratings.get('endgame', {}).get('accuracy', 0),
+        min(100, (phase_ratings.get('opening', {}).get('good_moves', 0) + 
+                  phase_ratings.get('middlegame', {}).get('good_moves', 0)) * 5),
+        (phase_ratings.get('opening', {}).get('accuracy', 0) + 
+         phase_ratings.get('middlegame', {}).get('accuracy', 0) + 
+         phase_ratings.get('endgame', {}).get('accuracy', 0)) / 3,
+        100 - min(100, (phase_ratings.get('opening', {}).get('total_moves', 1) - 
+                        phase_ratings.get('opening', {}).get('good_moves', 0)) * 10)
+    ]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatterpolar(
+        r=values,
+        theta=categories,
+        fill='toself',
+        name=player_name,
+        fillcolor=color.replace('1)', '0.3)'),
+        line=dict(color=color, width=2)
+    ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 100])
+        ),
+        showlegend=False,
+        title=f"{player_name} Skill Profile",
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white')
+    )
+    
+    return fig
+
+def create_move_quality_candles(analysis, player):
+    """Create candlestick chart showing move quality over time"""
+    player_moves = [m for m in analysis if m['player'] == player]
+    
+    if not player_moves:
+        return None
+    
+    # Group moves into segments
+    segment_size = max(1, len(player_moves) // 10)
+    segments = [player_moves[i:i + segment_size] for i in range(0, len(player_moves), segment_size)]
+    
+    x = []
+    open_vals = []
+    high_vals = []
+    low_vals = []
+    close_vals = []
+    colors = []
+    
+    for idx, segment in enumerate(segments):
+        if not segment:
+            continue
+            
+        evals = [m['eval_after'] if player == 'White' else -m['eval_after'] for m in segment]
+        
+        x.append(f"Moves {segment[0]['move_number']}-{segment[-1]['move_number']}")
+        open_vals.append(evals[0])
+        close_vals.append(evals[-1])
+        high_vals.append(max(evals))
+        low_vals.append(min(evals))
+        
+        # Color based on errors in segment
+        errors = sum(1 for m in segment if m['classification']['type'] in ['mistake', 'blunder'])
+        if errors >= 2:
+            colors.append('red')
+        elif errors == 1:
+            colors.append('orange')
+        else:
+            colors.append('green')
+    
+    fig = go.Figure(data=[go.Candlestick(
+        x=x,
+        open=open_vals,
+        high=high_vals,
+        low=low_vals,
+        close=close_vals,
+        increasing_line_color='#10b981',
+        decreasing_line_color='#ef4444'
+    )])
+    
+    fig.update_layout(
+        title=f"{player} Position Evaluation (Candlestick)",
+        xaxis_title="Move Segments",
+        yaxis_title="Evaluation",
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        height=350
+    )
+    
+    return fig
+
 def analyze_game(pgn_string, progress_callback=None):
     """Comprehensive game analysis"""
     pgn = StringIO(pgn_string)
@@ -989,7 +1089,7 @@ def analyze_game(pgn_string, progress_callback=None):
                 'fen': board.fen()
             })
         
-        # Classify move with 9-level system
+        # Classify move
         classification = classify_move_9_levels(
             eval_before['evaluation'],
             eval_after['evaluation'],
@@ -1019,7 +1119,6 @@ def analyze_game(pgn_string, progress_callback=None):
         
         move_number += 1
     
-    # Detect opening
     opening_info = detect_opening(move_sequence)
     
     return analysis, position_history, opening_info, tactical_motifs
@@ -1052,7 +1151,6 @@ def create_evaluation_chart(analysis):
     move_numbers = [m['move_number'] for m in analysis]
     evaluations = [m['eval_after'] for m in analysis]
     
-    # Color code by move quality
     colors = []
     for m in analysis:
         mtype = m['classification']['type']
@@ -1224,9 +1322,15 @@ if not st.session_state.game_analysis:
                         # Phase ratings
                         st.session_state.phase_ratings = calculate_phase_ratings(analysis)
                         
+                        # Separate phase ratings by player
+                        white_analysis = [m for m in analysis if m['player'] == 'White']
+                        black_analysis = [m for m in analysis if m['player'] == 'Black']
+                        st.session_state.white_phase_ratings = calculate_phase_ratings(white_analysis)
+                        st.session_state.black_phase_ratings = calculate_phase_ratings(black_analysis)
+                        
                         # ELO estimation
-                        white_phase = {k: v['score'] for k, v in st.session_state.phase_ratings.items()}
-                        black_phase = {k: v['score'] for k, v in st.session_state.phase_ratings.items()}
+                        white_phase = {k: v['score'] for k, v in st.session_state.white_phase_ratings.items()}
+                        black_phase = {k: v['score'] for k, v in st.session_state.black_phase_ratings.items()}
                         
                         st.session_state.estimated_elo = {
                             'white': estimate_elo(
@@ -1275,8 +1379,13 @@ if not st.session_state.game_analysis:
                         st.session_state.black_stats = calculate_player_stats(analysis, 'Black')
                         st.session_state.phase_ratings = calculate_phase_ratings(analysis)
                         
-                        white_phase = {k: v['score'] for k, v in st.session_state.phase_ratings.items()}
-                        black_phase = {k: v['score'] for k, v in st.session_state.phase_ratings.items()}
+                        white_analysis = [m for m in analysis if m['player'] == 'White']
+                        black_analysis = [m for m in analysis if m['player'] == 'Black']
+                        st.session_state.white_phase_ratings = calculate_phase_ratings(white_analysis)
+                        st.session_state.black_phase_ratings = calculate_phase_ratings(black_analysis)
+                        
+                        white_phase = {k: v['score'] for k, v in st.session_state.white_phase_ratings.items()}
+                        black_phase = {k: v['score'] for k, v in st.session_state.black_phase_ratings.items()}
                         
                         st.session_state.estimated_elo = {
                             'white': estimate_elo(st.session_state.white_stats['accuracy'], st.session_state.white_stats['acpl'], white_phase, st.session_state.white_stats['move_types']),
@@ -1398,12 +1507,161 @@ else:
         col_h.metric("❌ Mistake", moves.get('mistake', 0))
         col_i.metric("💥 Blunder", moves.get('blunder', 0))
     
+    with col2:
+        st.markdown("### ⚫ Black's Moves")
+        moves = st.session_state.black_stats['move_types']
+        
+        # Top tier
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric("✨ Brilliant", moves.get('brilliant', 0))
+        col_b.metric("🌟 Great", moves.get('great', 0))
+        col_c.metric("✓ Best", moves.get('best', 0))
+        
+        # Mid tier
+        col_d, col_e, col_f = st.columns(3)
+        col_d.metric("⭐ Excellent", moves.get('excellent', 0))
+        col_e.metric("✔ Good", moves.get('good', 0))
+        col_f.metric("📚 Theory", moves.get('theory', 0))
+        
+        # Low tier
+        col_g, col_h, col_i = st.columns(3)
+        col_g.metric("⚠ Inaccuracy", moves.get('inaccuracy', 0))
+        col_h.metric("❌ Mistake", moves.get('mistake', 0))
+        col_i.metric("💥 Blunder", moves.get('blunder', 0))
+    
     st.markdown("---")
     
     # Evaluation Chart
     st.markdown("## 📈 Position Evaluation Timeline")
     eval_chart = create_evaluation_chart(analysis)
     st.plotly_chart(eval_chart, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Deep Analysis Visualizations
+    st.markdown("## 🔬 Deep Performance Analysis")
+    
+    analysis_tab1, analysis_tab2, analysis_tab3 = st.tabs(["🕸️ Skill Profiles", "📊 Move Quality Flow", "🎯 Phase Breakdown"])
+    
+    with analysis_tab1:
+        st.markdown("### Spider Charts - Complete Skill Assessment")
+        col_spider1, col_spider2 = st.columns(2)
+        
+        with col_spider1:
+            white_spider = create_spider_chart(
+                st.session_state.white_phase_ratings, 
+                "White", 
+                "rgba(220, 220, 255, 1)"
+            )
+            st.plotly_chart(white_spider, use_container_width=True)
+        
+        with col_spider2:
+            black_spider = create_spider_chart(
+                st.session_state.black_phase_ratings, 
+                "Black", 
+                "rgba(100, 100, 120, 1)"
+            )
+            st.plotly_chart(black_spider, use_container_width=True)
+        
+        st.info("📊 **Spider Chart Metrics:**\n"
+                "- **Opening/Middlegame/Endgame**: Accuracy in each phase\n"
+                "- **Tactics**: Frequency of brilliant/great moves\n"
+                "- **Accuracy**: Overall precision\n"
+                "- **Calculation**: Consistency (inverse of errors)")
+    
+    with analysis_tab2:
+        st.markdown("### Candlestick View - Position Volatility")
+        
+        col_candle1, col_candle2 = st.columns(2)
+        
+        with col_candle1:
+            white_candles = create_move_quality_candles(analysis, 'White')
+            if white_candles:
+                st.plotly_chart(white_candles, use_container_width=True)
+            else:
+                st.info("No moves to display")
+        
+        with col_candle2:
+            black_candles = create_move_quality_candles(analysis, 'Black')
+            if black_candles:
+                st.plotly_chart(black_candles, use_container_width=True)
+            else:
+                st.info("No moves to display")
+        
+        st.info("📈 **Candlestick Interpretation:**\n"
+                "- **Green candles**: Position improved during segment\n"
+                "- **Red candles**: Position deteriorated during segment\n"
+                "- **Long wicks**: High volatility/complexity\n"
+                "- Color intensity shows error count in segment")
+    
+    with analysis_tab3:
+        st.markdown("### 9-Level Classification by Phase")
+        
+        phase_detail_tab1, phase_detail_tab2 = st.tabs(["⚪ White", "⚫ Black"])
+        
+        with phase_detail_tab1:
+            white_phases = st.session_state.white_phase_ratings
+            
+            col_pd1, col_pd2, col_pd3 = st.columns(3)
+            
+            with col_pd1:
+                st.markdown("#### 🎬 Opening")
+                if white_phases['opening']['total_moves'] > 0:
+                    st.metric("Moves", white_phases['opening']['total_moves'])
+                    st.metric("Accuracy", f"{white_phases['opening']['accuracy']:.1f}%")
+                    st.metric("Rating", white_phases['opening']['rating'])
+                else:
+                    st.info("No data")
+            
+            with col_pd2:
+                st.markdown("#### ⚔️ Middlegame")
+                if white_phases['middlegame']['total_moves'] > 0:
+                    st.metric("Moves", white_phases['middlegame']['total_moves'])
+                    st.metric("Accuracy", f"{white_phases['middlegame']['accuracy']:.1f}%")
+                    st.metric("Rating", white_phases['middlegame']['rating'])
+                else:
+                    st.info("No data")
+            
+            with col_pd3:
+                st.markdown("#### 👑 Endgame")
+                if white_phases['endgame']['total_moves'] > 0:
+                    st.metric("Moves", white_phases['endgame']['total_moves'])
+                    st.metric("Accuracy", f"{white_phases['endgame']['accuracy']:.1f}%")
+                    st.metric("Rating", white_phases['endgame']['rating'])
+                else:
+                    st.info("No endgame")
+        
+        with phase_detail_tab2:
+            black_phases = st.session_state.black_phase_ratings
+            
+            col_pd1, col_pd2, col_pd3 = st.columns(3)
+            
+            with col_pd1:
+                st.markdown("#### 🎬 Opening")
+                if black_phases['opening']['total_moves'] > 0:
+                    st.metric("Moves", black_phases['opening']['total_moves'])
+                    st.metric("Accuracy", f"{black_phases['opening']['accuracy']:.1f}%")
+                    st.metric("Rating", black_phases['opening']['rating'])
+                else:
+                    st.info("No data")
+            
+            with col_pd2:
+                st.markdown("#### ⚔️ Middlegame")
+                if black_phases['middlegame']['total_moves'] > 0:
+                    st.metric("Moves", black_phases['middlegame']['total_moves'])
+                    st.metric("Accuracy", f"{black_phases['middlegame']['accuracy']:.1f}%")
+                    st.metric("Rating", black_phases['middlegame']['rating'])
+                else:
+                    st.info("No data")
+            
+            with col_pd3:
+                st.markdown("#### 👑 Endgame")
+                if black_phases['endgame']['total_moves'] > 0:
+                    st.metric("Moves", black_phases['endgame']['total_moves'])
+                    st.metric("Accuracy", f"{black_phases['endgame']['accuracy']:.1f}%")
+                    st.metric("Rating", black_phases['endgame']['rating'])
+                else:
+                    st.info("No endgame")
     
     st.markdown("---")
     
@@ -1535,7 +1793,7 @@ else:
                         """, unsafe_allow_html=True)
             
             # Alternative variations
-            if show_alternatives and current_move['top_moves']:
+            if show_alternatives and current_move.get('top_moves'):
                 with st.expander("🔍 Alternative Lines"):
                     for idx, alt in enumerate(current_move['top_moves'][:3], 1):
                         is_played = (alt['move'] == current_move['move'])
@@ -1719,25 +1977,3 @@ st.markdown("""
     </p>
 </div>
 """, unsafe_allow_html=True)
-        col_b.metric("🌟 Great", moves.get('great', 0))
-        col_c.metric("✓ Best", moves.get('best', 0))
-        
-        # Mid tier
-        col_d, col_e, col_f = st.columns(3)
-        col_d.metric("⭐ Excellent", moves.get('excellent', 0))
-        col_e.metric("✔ Good", moves.get('good', 0))
-        col_f.metric("📚 Theory", moves.get('theory', 0))
-        
-        # Low tier
-        col_g, col_h, col_i = st.columns(3)
-        col_g.metric("⚠ Inaccuracy", moves.get('inaccuracy', 0))
-        col_h.metric("❌ Mistake", moves.get('mistake', 0))
-        col_i.metric("💥 Blunder", moves.get('blunder', 0))
-    
-    with col2:
-        st.markdown("### ⚫ Black's Moves")
-        moves = st.session_state.black_stats['move_types']
-        
-        # Top tier
-        col_a, col_b, col_c = st.columns(3)
-        col_a.metric("✨ Brilliant", moves.get('brilliant', 0))
