@@ -520,16 +520,18 @@ def is_discovered_attack(board, move):
 
 def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, is_book_move=False, best_move_eval=None):
     """
-    Enhanced 9-level move classification system:
-    1. Brilliant (‼) - Exceptional move, often sacrificial or unexpected
-    2. Great (⁂) - Very strong move significantly better than alternatives
-    3. Best (!) - Engine's top choice
-    4. Excellent (⁺) - Practically as good as best
-    5. Good - Solid move maintaining position
-    6. Theory (⚐) - Book move from opening theory
-    7. Inaccuracy (?!) - Suboptimal but playable
-    8. Mistake (?) - Significant error
-    9. Blunder (??) - Critical error
+    Enhanced 9-level move classification system with realistic thresholds:
+    
+    Classification is based on centipawn loss (CPL) - how much the position worsens:
+    - Brilliant: Unexpected strong move that looks like sacrifice but gains advantage
+    - Great: Strong move significantly better than expected (better than engine's 2nd choice)
+    - Best: Engine's #1 choice
+    - Excellent: Within 10 CP of best
+    - Good: 10-25 CP loss (acceptable)
+    - Theory: Book move
+    - Inaccuracy: 25-75 CP loss
+    - Mistake: 75-200 CP loss
+    - Blunder: 200+ CP loss
     """
     
     # Normalize evaluation for player color
@@ -537,115 +539,124 @@ def classify_move_9_levels(eval_before, eval_after, is_best_move, player_color, 
         eval_before = -eval_before
         eval_after = -eval_after
     
+    # Calculate centipawn loss (positive = position got worse)
     centipawn_loss = (eval_before - eval_after) * 100
     
-    # Theory/Book move (highest priority for opening moves)
+    # Theory/Book move (only for first 10 moves)
     if is_book_move:
         return {
             'type': 'theory',
             'symbol': '⚐',
             'cp_loss': 0,
-            'feedback': '📚 Theory Move',
+            'feedback': '📚 Theory',
             'color': '#a855f7',
-            'explanation': 'Well-known theoretical move from opening databases.',
-            'teaching': 'Following established opening theory helps you reach good positions.'
+            'explanation': 'Standard opening theory move.',
+            'teaching': 'Following established opening principles.'
         }
     
-    # Brilliant move - Must be surprising AND improve position significantly
-    # Not the engine's first choice but gains major advantage
-    if centipawn_loss < -50 and not is_best_move:
-        return {
-            'type': 'brilliant',
-            'symbol': '‼',
-            'cp_loss': int(centipawn_loss),
-            'feedback': '✨ BRILLIANT!!',
-            'color': '#9333ea',
-            'explanation': 'An exceptional move requiring deep calculation or creative sacrifice!',
-            'teaching': 'This shows outstanding tactical vision. Study positions like this - brilliant moves are rare gems that demonstrate mastery!'
-        }
+    # BRILLIANT MOVE - Very strict criteria
+    # Must NOT be the best move, but gains significant advantage (finds hidden resource)
+    # Example: Sacrificing queen for checkmate in 5, when engine expected slower win
+    if not is_best_move and centipawn_loss < -30:
+        # Additional check: position must have improved significantly
+        if eval_after > eval_before + 0.3:  # Gained at least 30 centipawns
+            return {
+                'type': 'brilliant',
+                'symbol': '‼',
+                'cp_loss': int(centipawn_loss),
+                'feedback': '✨ BRILLIANT!!',
+                'color': '#9333ea',
+                'explanation': 'Exceptional move! Often a surprising sacrifice or counter-intuitive play that gains significant advantage.',
+                'teaching': 'You found a brilliant resource! This shows deep calculation - study this position carefully.'
+            }
     
-    # Great move - Significantly better than expected, but not quite brilliant
-    # Improves position by 20-50 centipawns more than best alternative
-    if centipawn_loss < -20 and not is_best_move:
+    # GREAT MOVE - Strong move that's better than the obvious alternatives
+    # Better than 2nd best option by significant margin, but not engine's #1
+    if not is_best_move and centipawn_loss < -15:
         return {
             'type': 'great',
             'symbol': '⁂',
             'cp_loss': int(centipawn_loss),
-            'feedback': '🌟 Great Move!',
+            'feedback': '🌟 Great!',
             'color': '#34d399',
-            'explanation': 'Very strong move that significantly improves your position!',
-            'teaching': 'You found a move better than the obvious choices. This demonstrates strong positional understanding.'
+            'explanation': 'Very strong move that improves position beyond expectations.',
+            'teaching': 'Excellent find! You played better than the obvious moves.'
         }
     
-    # Best move - Engine's top choice (or within 5 centipawns)
-    if is_best_move or centipawn_loss < 5:
+    # BEST MOVE - Engine's absolute top choice (within 5 CP is considered "best")
+    if is_best_move or abs(centipawn_loss) <= 5:
         return {
             'type': 'best',
             'symbol': '!',
             'cp_loss': int(centipawn_loss),
-            'feedback': '✓ Best Move',
+            'feedback': '✓ Best',
             'color': '#10b981',
-            'explanation': "Perfect! This is the engine's top choice.",
-            'teaching': 'Playing best moves consistently is the key to improving your rating. Well done!'
+            'explanation': "Perfect choice - the engine's top recommendation.",
+            'teaching': 'This is optimal play. Consistency at this level leads to rating gains!'
         }
     
-    # Excellent move - Very close to best (5-15 centipawns)
-    if centipawn_loss < 15:
+    # EXCELLENT MOVE - Very close to best (5-10 CP loss)
+    # Practically as good as best in real games
+    if centipawn_loss <= 10:
         return {
             'type': 'excellent',
             'symbol': '⁺',
             'cp_loss': int(centipawn_loss),
             'feedback': '⭐ Excellent',
             'color': '#60a5fa',
-            'explanation': 'Very strong move, practically as good as the best.',
-            'teaching': 'Almost perfect play. The difference is negligible - keep this up!'
+            'explanation': 'Near-perfect play, only minimally different from the best move.',
+            'teaching': 'Practically as strong as the best move. Great accuracy!'
         }
     
-    # Good move - Reasonable choice (15-40 centipawns)
-    if centipawn_loss < 40:
+    # GOOD MOVE - Acceptable play (10-25 CP loss)
+    # No serious harm done, reasonable choice
+    if centipawn_loss <= 25:
         return {
             'type': 'good',
             'symbol': '',
             'cp_loss': int(centipawn_loss),
-            'feedback': '✔ Good Move',
+            'feedback': '✔ Good',
             'color': '#3b82f6',
-            'explanation': 'Solid play maintaining your position.',
-            'teaching': 'Good moves like this keep you in the game. Nothing wrong here!'
+            'explanation': 'Solid, reasonable move that maintains your position.',
+            'teaching': 'Nothing wrong here - good fundamental play.'
         }
     
-    # Inaccuracy - Suboptimal but not terrible (40-90 centipawns)
-    if centipawn_loss < 90:
+    # INACCURACY - Minor error (25-75 CP loss)
+    # Suboptimal but not game-changing
+    if centipawn_loss <= 75:
         return {
             'type': 'inaccuracy',
             'symbol': '?!',
             'cp_loss': int(centipawn_loss),
             'feedback': '⚠ Inaccuracy',
             'color': '#f59e0b',
-            'explanation': 'Not the best choice. A better move existed.',
-            'teaching': 'Take more time here. Look for more active piece placement or tactical opportunities. Small inaccuracies add up!'
+            'explanation': 'Suboptimal choice - a better move was available.',
+            'teaching': f'Small inaccuracies add up! Lost {int(centipawn_loss)} centipawns. Look for more active moves.'
         }
     
-    # Mistake - Significant error (90-250 centipawns)
-    if centipawn_loss < 250:
+    # MISTAKE - Significant error (75-200 CP loss)
+    # Clear tactical or positional oversight
+    if centipawn_loss <= 200:
         return {
             'type': 'mistake',
             'symbol': '?',
             'cp_loss': int(centipawn_loss),
             'feedback': '❌ Mistake',
             'color': '#f97316',
-            'explanation': 'This weakens your position significantly.',
-            'teaching': 'Before each move, check: 1) Are my pieces safe? 2) Am I creating weaknesses? 3) What is my opponent threatening?'
+            'explanation': 'Significant error that weakens your position considerably.',
+            'teaching': f'This loses {int(centipawn_loss)} centipawns. Check: 1) Piece safety 2) Opponent threats 3) Better alternatives'
         }
     
-    # Blunder - Critical error (250+ centipawns or losing material)
+    # BLUNDER - Critical error (200+ CP loss)
+    # Usually loses material, allows checkmate, or throws away winning position
     return {
         'type': 'blunder',
         'symbol': '??',
         'cp_loss': int(centipawn_loss),
         'feedback': '💥 BLUNDER!!',
         'color': '#ef4444',
-        'explanation': 'Critical error! This loses material or a winning position.',
-        'teaching': 'ALWAYS use the blunder check: 1) Check for opponent checks 2) Check for opponent captures 3) Verify all pieces are defended. Slow down!'
+        'explanation': 'Critical error! This loses material or throws away your advantage.',
+        'teaching': f'HUGE mistake losing {int(centipawn_loss)} centipawns! Use blunder-check routine: 1) Check for checks 2) Check for captures 3) Verify all pieces are safe'
     }
 
 def generate_tutor_explanation(move_data, position_board):
